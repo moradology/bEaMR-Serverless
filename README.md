@@ -38,6 +38,12 @@ Examples:
 ./tf destroy
 ```
 
+If you run into permissions issues, don't forget to supply credentials. There are a lot of different mechanisms available here, so review the [docs](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-authentication.html) as needed. Here's an example of using a pre-configured profile named "your-aws-profile":
+
+```bash
+AWS_PROFILE=your-aws-profile ./tf apply
+```
+
 ### Managing Workspaces
 
 Manage different deployment environments using workspaces. Automatically selects the appropriate variable file for the active workspace:
