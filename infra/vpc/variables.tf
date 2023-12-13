@@ -39,12 +39,3 @@ variable "one_nat_gateway_per_az" {
   type        = bool
   default     = false
 }
-
-variable "tags" {
-  description = "Tags for the VPC resources"
-  type        = map(string)
-  default     = {
-    Terraform   = "true"
-    Environment = "dev"
-  }
-}

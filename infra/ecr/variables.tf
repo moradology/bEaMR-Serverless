@@ -20,3 +20,9 @@ variable "scan_on_push" {
   type        = bool
   default     = true
 }
+
+variable "force_delete_ecr" {
+  description = "Indicates whether terraform destroy should force deletion of repo even if images exist"
+  type        = bool
+  default     = true
+}
