@@ -1,15 +1,5 @@
-terraform {
-  backend "s3" {
-    bucket         = "tf-state-bucket"
-    key            = "state/${terraform.workspace}/terraform.tfstate"
-    # The region is not hard-coded; use the AWS_DEFAULT_REGION environment variable
-    dynamodb_table = "my-lock-table"
-    encrypt        = true
-  }
-}
-
 provider "aws" {
-  region = data.aws_region.current.name
+  region = "us-east-1"
   default_tags {
     tags = {
       Environment = terraform.workspace

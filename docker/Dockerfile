@@ -353,6 +353,12 @@ RUN rm -f $PREFIX/lib/libturbojpeg.so* \
   # Only libwebp.so is used by GDAL
   && rm -f  $PREFIX/lib/libwebpmux.so*  $PREFIX/lib/libwebpdemux.so* $PREFIX/lib/libwebpdecoder.so*
 
+# Build the binary to boot beam processes
+RUN cd /opt && git clone --branch v2.51.0 --single-branch https://github.com/apache/beam.git
+RUN cd /opt/beam && ./gradlew :sdks:python:container:build 
+RUN cd /opt/beam && cp sdks/python/container/build/target/launcher/linux_amd64/boot /home/hadoop/boot
+RUN rm -rf /opt/beam
+
 # Build final image
 FROM public.ecr.aws/emr-serverless/spark/emr-6.12.0:latest as runner
 
@@ -363,6 +369,7 @@ COPY --from=builder /opt/lib/ $PREFIX/lib/
 COPY --from=builder /opt/include/ $PREFIX/include/
 COPY --from=builder /opt/share/ $PREFIX/share/
 COPY --from=builder /opt/bin/ $PREFIX/bin/
+COPY --from=builder /home/hadoop/boot /home/hadoop/boot
 
 # HACK to get IAM working in EMR serverless with GDAL<3.8.2
 # TODO: remove once 3.8.2 is available for build or if building from source

@@ -83,18 +83,8 @@ Replace the placeholders with actual job details. `entryPointArguments` should b
 
 Terraform workspaces are extensively used to manage and isolate configurations for different environments in `bEaMR-Serverless`. 
 
-#### Workspace Requirements
+### Important Notes
 
 - **Avoid Default Workspace**: The project contains custom logic to prevent the use of Terraform's default workspace.
 - **Workspace-Specific Configuration**: Each workspace requires a `terraform.[workspace].tfvars` file for environment-specific configurations.
-
-#### Working with Workspaces
-
-- **Creating a New Workspace**: Use `terraform workspace new [workspace_name]`.
-- **Selecting a Workspace**: Ensure the correct workspace is selected with `terraform workspace select [workspace_name]`.
-- **Applying Changes**: The script `tf` automates workspace management and variable file selection.
-
-### Important Notes
-
-- **Variable Files**: Workspace-specific variable files should be named correctly and located in the `./infra` directory.
 - **Credentials and Secrets**: Handle AWS credentials and sensitive data securely, especially when using the job submission script.
