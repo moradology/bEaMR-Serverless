@@ -55,7 +55,7 @@ elif [ "$1" = "push" ]; then
     EMR_RELEASE_LABEL=$3
 
     build_docker_image "$IMAGE_NAME"
-    validate_docker_image "$REPO_URL" "$EMR_RELEASE_LABEL"
+    validate_docker_image "$IMAGE_NAME" "$EMR_RELEASE_LABEL"
 
     echo "Tagging Docker image..."
     docker tag "${IMAGE_NAME}:latest" "${REPO_URL}:latest"

@@ -57,7 +57,7 @@ case $1 in
         fi
         # Extract ECR Repository URL and EMR Release Label from workspace state
         REPO_URL=$(jq -r '.resources[] | select(.type == "aws_ecr_repository").instances[].attributes.repository_url' "$state_file")
-        EMR_RELEASE_LABEL="emr-6.12.0"
+        EMR_RELEASE_LABEL="emr-6.9.0"
         if [ -z "$REPO_URL" ]; then
             echo "Error: ECR Repository URL not found in terraform state for workspace '${workspace}'."
             exit 1
@@ -69,5 +69,3 @@ case $1 in
         terraform "$@"
         ;;
 esac
-
-cd - > /dev/null

@@ -1,4 +1,4 @@
-FROM public.ecr.aws/emr-serverless/spark/emr-6.12.0:latest as builder
+FROM public.ecr.aws/emr-serverless/spark/emr-6.9.0:latest as builder
 
 USER root
 
@@ -6,8 +6,8 @@ USER root
 RUN yum update -y && \
     yum install -y git autoconf automake libtool flex bison \
       cmake make tar gzip gcc gcc-c++ automake16 libpng-devel \
-      nasm libxml2-devel readline-devel openssl-devel curl-devel \
-      cmake3 git golang && \
+      nasm libxml2-devel readline-devel openssl11-devel curl-devel \
+      cmake3 git golang swig libffi-devel bzip2-devel && \
     yum clean all && \
     rm -rf /var/cache/yum /var/lib/yum/history
 
@@ -314,12 +314,37 @@ RUN mkdir /tmp/brotli \
   && cd /tmp/brotli \
   && mkdir build && cd build \
   && CFLAGS="-O2 -Wl,-S" CXXFLAGS="-O2 -Wl,-S" ../configure-cmake --prefix=$PREFIX \
-  && make -j $(nproc) --silent && make install && make clean \
+  # && make -j $(nproc) --silent && make install && make clean \
   && rm -rf /tmp/brotli
+
+# Python 3.11.7
+RUN mkdir /tmp/python \
+  && curl -fsSL https://www.python.org/ftp/python/3.11.7/Python-3.11.7.tgz | tar -xzC /tmp/python --strip-components=1 \
+  && cd /tmp/python \
+  && ./configure --prefix=/opt/python/3.11.7/ --enable-optimizations --with-lto --with-computed-gotos --with-system-ffi --enable-shared \
+  && make -j "$(nproc)" \
+  && make altinstall \
+  && rm -rf /tmp/python
+
+ENV LD_LIBRARY_PATH=/opt/python/3.11.7/lib:$LD_LIBRARY_PATH
+
+RUN /opt/python/3.11.7/bin/python3.11 -m pip install --upgrade pip setuptools wheel \
+  && ln -s /opt/python/3.11.7/bin/python3.11 /opt/python/3.11.7/bin/python3 \
+  && ln -s /opt/python/3.11.7/bin/python3.11 /opt/python/3.11.7/bin/python \
+  && ln -s /opt/python/3.11.7/bin/pydoc3.11 /opt/python/3.11.7/bin/pydoc \
+  && ln -s /opt/python/3.11.7/bin/idle3.11 /opt/python/3.11.7/bin/idle \
+  && ln -s /opt/python/3.11.7/bin/python3.11-config /opt/python/3.11.7/bin/python-config
+
+ENV PATH=/opt/python/3.11.7/bin:$PATH
+
+# Python deps
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install numpy
+RUN pip install -r /tmp/requirements.txt
 
 # GDAL
 RUN mkdir /tmp/gdal \
-  && curl -sfL https://github.com/OSGeo/gdal/archive/refs/tags/v3.7.3.tar.gz | tar zxf - -C /tmp/gdal --strip-components=1 \
+  && curl -sfL https://github.com/OSGeo/gdal/archive/refs/tags/v3.8.3.tar.gz | tar zxf - -C /tmp/gdal --strip-components=1 \
   && cd /tmp/gdal \
   && mkdir build && cd build \
   && cmake3 .. \
@@ -341,67 +366,37 @@ RUN mkdir /tmp/gdal \
   && make -j $(nproc) --silent && make install \
   && rm -rf /tmp/gdal
 
-# Install jq to work around gdal permissions issues via entrypoint script modification
-RUN mkdir /tmp/jq \
-  && curl -sfL https://github.com/jqlang/jq/releases/download/jq-1.7/jq-1.7.tar.gz | tar zxf - -C /tmp/jq --strip-components=1 \
-  && cd /tmp/jq \
-  && ./configure && make && make install \
-  && rm -rf /tmp/jq
-
 # libturbojpeg.so is not used by GDAL. Only libjpeg.so*
 RUN rm -f $PREFIX/lib/libturbojpeg.so* \
   # Only libwebp.so is used by GDAL
   && rm -f  $PREFIX/lib/libwebpmux.so*  $PREFIX/lib/libwebpdemux.so* $PREFIX/lib/libwebpdecoder.so*
 
 # Build the binary to boot beam processes
-RUN cd /opt && git clone --branch v2.51.0 --single-branch https://github.com/apache/beam.git
-RUN cd /opt/beam && ./gradlew :sdks:python:container:build 
-RUN cd /opt/beam && cp sdks/python/container/build/target/launcher/linux_amd64/boot /home/hadoop/boot
-RUN rm -rf /opt/beam
+RUN cd /opt && git clone --branch v2.51.0 --single-branch https://github.com/apache/beam.git; \
+    cd /opt/beam && ./gradlew :sdks:python:container:build && \
+    cp sdks/python/container/build/target/launcher/linux_amd64/boot /home/hadoop/boot; \
+    chmod +x /home/hadoop/boot; \
+    rm -rf /opt/beam
 
-# Build final image
-FROM public.ecr.aws/emr-serverless/spark/emr-6.12.0:latest as runner
+
+FROM public.ecr.aws/emr-serverless/spark/emr-6.9.0:latest as runner
 
 USER root
-
 ENV PREFIX /opt
-COPY --from=builder /opt/lib/ $PREFIX/lib/
-COPY --from=builder /opt/include/ $PREFIX/include/
-COPY --from=builder /opt/share/ $PREFIX/share/
-COPY --from=builder /opt/bin/ $PREFIX/bin/
-COPY --from=builder /home/hadoop/boot /home/hadoop/boot
 
-# HACK to get IAM working in EMR serverless with GDAL<3.8.2
-# TODO: remove once 3.8.2 is available for build or if building from source
-# https://github.com/OSGeo/gdal/issues/8858
-COPY entrypoint.sh /usr/bin/entrypoint.sh
-
-RUN export GDAL_VERSION=$(gdal-config --version)
+COPY --from=builder /opt /opt
+COPY --from=builder /home/hadoop /home/hadoop
 
 ENV \
   GDAL_DATA=$PREFIX/share/gdal \
   PROJ_LIB=$PREFIX/share/proj \
   GDAL_CONFIG=$PREFIX/bin/gdal-config \
   GEOS_CONFIG=$PREFIX/bin/geos-config \
-  PATH=$PREFIX/bin:$PATH \
-  LD_LIBRARY_PATH=/opt/lib
+  LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/lib:/opt/python/3.11.7/lib \
+  PATH=/opt/python/3.11.7/bin:$PREFIX/bin:$PATH
 
 # Linkage for gdal
 RUN echo '/opt/lib' >> /etc/ld.so.conf && ldconfig
 
-# coursier install for JVM dependencies
-RUN curl -fLo /usr/bin/coursier https://git.io/coursier-cli && chmod +x /usr/bin/coursier
-
 WORKDIR /home/hadoop
 USER hadoop:hadoop
-
-# Python deps
-COPY requirements.txt /home/hadoop/requirements.txt
-RUN pip3 install -r requirements.txt
-
-# (optional) JVM deps
-# e.g. RUN /usr/bin/coursier fetch "org.typelevel:cats-core_2.12:1.6.0"
-# stage dependencies for spark to discover
-COPY build_classpath.sh build_classpath.sh
-RUN bash build_classpath.sh
-ENV CLASSPATH=".:/home/hadoop/dependencies/*"
